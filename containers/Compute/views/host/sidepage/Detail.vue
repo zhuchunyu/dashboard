@@ -10,6 +10,7 @@
 </template>
 
 <script>
+import jsYaml from 'js-yaml'
 import {
   getUserTagColumn,
   getExtTagColumn,
@@ -373,7 +374,32 @@ export default {
         },
       ],
       baseInfo: baseInfo,
+      cmOptions: {
+        tabSize: 2,
+        styleActiveLine: true,
+        lineNumbers: true,
+        line: true,
+        mode: 'text/x-yaml',
+        theme: 'material',
+        readOnly: true,
+      },
+      effectiveConfigRaw: null,
       extraInfo: [
+        {
+          field: 'effective_config',
+          title: this.$t('system.service_sidepage_effective_config'),
+          slots: {
+            default: () => {
+              if (!this.data?.manager_uri) return '-'
+              const yaml = jsYaml.safeDump(this.effectiveConfig || {})
+              return (
+                <div style="max-height: 240px; overflow-y: auto; margin-bottom: 12px;">
+                  <code-mirror value={yaml} options={this.cmOptions} />
+                </div>
+              )
+            },
+          },
+        },
         {
           title: this.$t('compute.text_590'),
           items: [
@@ -655,18 +681,47 @@ export default {
       ],
     }
   },
+  computed: {
+    effectiveConfig () {
+      const raw = this.effectiveConfigRaw
+      if (!raw || typeof raw !== 'object') return {}
+      if (raw.data != null && typeof raw.data === 'object' && !Array.isArray(raw.data)) {
+        return raw.data
+      }
+      if (Array.isArray(raw)) return {}
+      return raw
+    },
+  },
   watch: {
     'data.id': {
       handler () {
         this.fetchAlertData()
+        this.fetchEffectiveConfig()
       },
       immediate: true,
+    },
+    'data.manager_uri': {
+      handler () {
+        this.fetchEffectiveConfig()
+      },
     },
   },
   // created () {
   //   this.updateDetailData()
   // },
   methods: {
+    async fetchEffectiveConfig () {
+      this.effectiveConfigRaw = null
+      const id = this.data?.id
+      if (!id) return
+      if (!this.data?.manager_uri) return
+      try {
+        const resp = await new this.$Manager(`hosts/${id}/app-options`, 'v1').list()
+        this.effectiveConfigRaw = resp?.data || resp
+      } catch (e) {
+        this.effectiveConfigRaw = null
+      }
+    },
     async fetchAlertData () {
       this.alertData = null
       const id = this.data?.id
